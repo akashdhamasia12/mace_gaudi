@@ -64,6 +64,11 @@ def init_device(device_str: str) -> torch.device:
         assert torch.backends.mps.is_available(), "No MPS backend is available!"
         logging.info("Using MPS GPU acceleration")
         return torch.device("mps")
+    if device_str == "hpu":
+        import habana_frameworks.torch.core as htcore
+        assert torch.hpu.is_available(), "No HPU device available!"
+        logging.info("Using HPU")
+        return torch.device("hpu")
 
     logging.info("Using CPU")
     return torch.device("cpu")

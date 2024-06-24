@@ -30,3 +30,6 @@ dist/
 /wandb
 /checkpoints
 *.model
+
+# Datasets
+BOTNet-datasets

@@ -48,6 +48,10 @@ def main() -> None:
     This script runs the training/fine tuning for mace
     """
     args = tools.build_default_arg_parser().parse_args()
+
+    if args.device == "hpu":
+        import habana_frameworks.torch.core as htcore
+
     run(args)
 
 
