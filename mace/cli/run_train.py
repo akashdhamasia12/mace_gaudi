@@ -61,17 +61,28 @@ def run(args: argparse.Namespace) -> None:
     """
     tag = tools.get_tag(name=args.name, seed=args.seed)
     if args.distributed:
-        try:
-            distr_env = DistributedEnvironment()
-        except Exception as e:  # pylint: disable=W0703
-            logging.error(f"Failed to initialize distributed environment: {e}")
-            return
-        world_size = distr_env.world_size
-        local_rank = distr_env.local_rank
-        rank = distr_env.rank
-        if rank == 0:
-            print(distr_env)
-        torch.distributed.init_process_group(backend="nccl")
+        if args.device == "hpu":
+            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+            world_size, rank, local_rank = initialize_distributed_hpu()
+            os.environ['MASTER_ADDR'] = 'localhost'
+            os.environ['MASTER_PORT'] = '12355'
+            os.environ["ID"] = str(rank)
+            #distributed package for HCCL
+            import habana_frameworks.torch.distributed.hccl
+            torch.distributed.init_process_group(backend='hccl', rank=rank, world_size=world_size)
+
+        else:
+            try:
+                distr_env = DistributedEnvironment()
+            except Exception as e:  # pylint: disable=W0703
+                logging.error(f"Failed to initialize distributed environment: {e}")
+                return
+            world_size = distr_env.world_size
+            local_rank = distr_env.local_rank
+            rank = distr_env.rank
+            if rank == 0:
+                print(distr_env)
+            torch.distributed.init_process_group(backend="nccl")
     else:
         rank = int(0)
 
@@ -80,7 +91,12 @@ def run(args: argparse.Namespace) -> None:
     tools.setup_logger(level=args.log_level, tag=tag, directory=args.log_dir, rank=rank)
 
     if args.distributed:
-        torch.cuda.set_device(local_rank)
+
+        if args.device == "hpu":
+            torch.hpu.set_device(local_rank)
+        else:
+            torch.cuda.set_device(local_rank)
+
         logging.info(f"Process group initialized: {torch.distributed.is_initialized()}")
         logging.info(f"Processes: {world_size}")
 
@@ -697,7 +713,10 @@ def run(args: argparse.Namespace) -> None:
         wandb.run.summary["params"] = args_dict_json
 
     if args.distributed:
-        distributed_model = DDP(model, device_ids=[local_rank])
+        if args.device == "hpu":
+            distributed_model = DDP(model)
+        else:
+            distributed_model = DDP(model, device_ids=[local_rank])
     else:
         distributed_model = None
 
@@ -790,7 +809,10 @@ def run(args: argparse.Namespace) -> None:
         )
         model.to(device)
         if args.distributed:
-            distributed_model = DDP(model, device_ids=[local_rank])
+            if args.device == "hpu":
+                distributed_model = DDP(model)
+            else:
+                distributed_model = DDP(model, device_ids=[local_rank])
         model_to_evaluate = model if not args.distributed else distributed_model
         logging.info(f"Loaded model from epoch {epoch}")
 
